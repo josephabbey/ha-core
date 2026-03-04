@@ -594,3 +594,32 @@ async def test_notify_multiple_targets_if_any_disconnected(
     # Check that there are no more messages to receive (timeout expected)
     with pytest.raises(asyncio.TimeoutError):
         await asyncio.wait_for(client.receive_json(), timeout=0.1)
+
+
+async def test_notify_entity_works(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, setup_push_receiver
+) -> None:
+    """Test notify entity works."""
+    assert hass.states.get("notify.test") is not None
+    await hass.services.async_call(
+        "notify",
+        "send_message",
+        {
+            "entity_id": "notify.test",
+            "message": "Hello entity",
+            "title": "Entity Demo",
+        },
+        blocking=True,
+    )
+
+    assert len(aioclient_mock.mock_calls) == 1
+    call_json = aioclient_mock.mock_calls[0][2]
+
+    assert call_json["message"] == "Hello entity"
+    assert call_json["title"] == "Entity Demo"
+    assert call_json["registration_info"]["webhook_id"] == "mock-webhook_id"
+
+    state = hass.states.get("notify.test")
+    assert state is not None
+    assert state.state != "unknown"
+    assert state.state != "unavailable"

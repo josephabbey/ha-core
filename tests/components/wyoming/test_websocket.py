@@ -1,8 +1,11 @@
 """Websocket tests for Wyoming integration."""
 
+from types import SimpleNamespace
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
+from tests.common import MockUser
 from tests.typing import WebSocketGenerator
 
 
@@ -56,3 +59,96 @@ async def test_info(
     handle_info = info[init_wyoming_handle.entry_id].get("handle", [])
     assert len(handle_info) == 1
     assert handle_info[0].get("name") == "Test Handle"
+
+
+async def test_identity_mapping_crud(
+    hass: HomeAssistant,
+    hass_ws_client: WebSocketGenerator,
+    init_components,
+    init_wyoming_intent: ConfigEntry,
+    hass_admin_user: MockUser,
+) -> None:
+    """Test Wyoming identity mapping websocket commands."""
+    client = await hass_ws_client(hass)
+
+    await client.send_json_auto_id(
+        {
+            "type": "wyoming/identity_mapping/set",
+            "entry_id": init_wyoming_intent.entry_id,
+            "identity_name": "Alice",
+            "user_id": hass_admin_user.id,
+        }
+    )
+    msg = await client.receive_json()
+    assert msg["success"]
+
+    await client.send_json_auto_id(
+        {
+            "type": "wyoming/identity_mapping/list",
+            "entry_id": init_wyoming_intent.entry_id,
+        }
+    )
+    msg = await client.receive_json()
+    assert msg["success"]
+    assert msg["result"] == {
+        "mappings": [
+            {
+                "identity_name": "Alice",
+                "user_id": hass_admin_user.id,
+                "user_name": hass_admin_user.name,
+            }
+        ]
+    }
+
+    await client.send_json_auto_id(
+        {
+            "type": "wyoming/identity_mapping/delete",
+            "entry_id": init_wyoming_intent.entry_id,
+            "identity_name": "Alice",
+        }
+    )
+    msg = await client.receive_json()
+    assert msg["success"]
+
+    await client.send_json_auto_id(
+        {
+            "type": "wyoming/identity_mapping/list",
+            "entry_id": init_wyoming_intent.entry_id,
+        }
+    )
+    msg = await client.receive_json()
+    assert msg["success"]
+    assert msg["result"] == {"mappings": []}
+
+
+async def test_identity_list(
+    hass: HomeAssistant,
+    hass_ws_client: WebSocketGenerator,
+    init_components,
+    init_wyoming_intent: ConfigEntry,
+) -> None:
+    """Test listing Wyoming identities from service info."""
+    item = hass.data["wyoming"][init_wyoming_intent.entry_id]
+    item.service.info.identity = [
+        SimpleNamespace(
+            models=[
+                SimpleNamespace(
+                    identities=[
+                        SimpleNamespace(name="Alice"),
+                        SimpleNamespace(name="Bob"),
+                    ]
+                )
+            ]
+        )
+    ]
+
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id(
+        {
+            "type": "wyoming/identity/list",
+            "entry_id": init_wyoming_intent.entry_id,
+        }
+    )
+    msg = await client.receive_json()
+    assert msg["success"]
+    assert msg["result"] == {"identities": ["Alice", "Bob"]}

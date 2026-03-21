@@ -89,6 +89,7 @@ async def test_if_fires_on_event(
             "language": "en",
             "text": "Ha ha ha",
             "extra_system_prompt": None,
+            "identity_name": None,
         },
     }
 

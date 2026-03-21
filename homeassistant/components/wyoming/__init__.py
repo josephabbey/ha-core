@@ -14,6 +14,7 @@ from homeassistant.helpers.typing import ConfigType
 from .const import ATTR_SPEAKER, DOMAIN
 from .data import WyomingService
 from .devices import SatelliteDevice
+from .identity import async_setup_identity_store
 from .models import DomainDataItem
 from .websocket_api import async_register_websocket_api
 
@@ -37,6 +38,7 @@ __all__ = [
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the Wyoming integration."""
+    await async_setup_identity_store(hass)
     async_register_websocket_api(hass)
 
     return True

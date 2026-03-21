@@ -35,7 +35,8 @@ from homeassistant.components.assist_satellite import (
     AssistSatelliteEntityFeature,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import Context, HomeAssistant, callback
+from homeassistant.helpers import entity
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util.ulid import ulid_now
 
@@ -43,6 +44,7 @@ from .const import DOMAIN, SAMPLE_CHANNELS, SAMPLE_WIDTH
 from .data import WyomingService
 from .devices import SatelliteDevice
 from .entity import WyomingSatelliteEntity
+from .identity import async_get_effective_context
 from .models import DomainDataItem
 
 _LOGGER = logging.getLogger(__name__)
@@ -613,7 +615,15 @@ class WyomingAssistSatellite(WyomingSatelliteEntity, AssistSatelliteEntity):
                 elif RunPipeline.is_type(client_event.type):
                     # Satellite requested pipeline run
                     run_pipeline = RunPipeline.from_event(client_event)
-                    self._run_pipeline_once(run_pipeline, wake_word_phrase)
+                    self._run_pipeline_once(
+                        run_pipeline,
+                        wake_word_phrase,
+                        (
+                            client_event.data.get("identity_name")
+                            if client_event.data
+                            else None
+                        ),
+                    )
                 elif (
                     AudioChunk.is_type(client_event.type) and self._is_pipeline_running
                 ):
@@ -667,7 +677,10 @@ class WyomingAssistSatellite(WyomingSatelliteEntity, AssistSatelliteEntity):
                 pending.add(client_event_task)
 
     def _run_pipeline_once(
-        self, run_pipeline: RunPipeline, wake_word_phrase: str | None = None
+        self,
+        run_pipeline: RunPipeline,
+        wake_word_phrase: str | None = None,
+        identity_name: str | None = None,
     ) -> None:
         """Run a pipeline once."""
         _LOGGER.debug("Received run information: %s", run_pipeline)
@@ -688,13 +701,46 @@ class WyomingAssistSatellite(WyomingSatelliteEntity, AssistSatelliteEntity):
         self._pipeline_ended_event.clear()
         self.config_entry.async_create_background_task(
             self.hass,
-            self.async_accept_pipeline_from_satellite(
+            self._async_accept_pipeline_from_satellite(
                 audio_stream=self._stt_stream(),
                 start_stage=start_stage,
                 end_stage=end_stage,
                 wake_word_phrase=wake_word_phrase,
+                identity_name=identity_name or getattr(run_pipeline, "identity_name", None),
             ),
             "wyoming satellite pipeline",
+        )
+
+    async def _async_accept_pipeline_from_satellite(
+        self,
+        audio_stream: AsyncGenerator[bytes],
+        start_stage: assist_pipeline.PipelineStage,
+        end_stage: assist_pipeline.PipelineStage,
+        wake_word_phrase: str | None,
+        identity_name: str | None,
+    ) -> None:
+        """Resolve user context for a pipeline before passing it to HA."""
+        if (
+            (self._context is None)
+            or (self._context_set is None)
+            or ((time.time() - self._context_set) > entity.CONTEXT_RECENT_TIME_SECONDS)
+        ):
+            self.async_set_context(Context())
+
+        assert self._context is not None
+        effective_context = await async_get_effective_context(
+            self.hass,
+            self.config_entry.entry_id,
+            self._context,
+            identity_name,
+        )
+        await self.async_accept_pipeline_from_satellite(
+            audio_stream=audio_stream,
+            start_stage=start_stage,
+            end_stage=end_stage,
+            wake_word_phrase=wake_word_phrase,
+            identity_name=identity_name,
+            context_override=effective_context,
         )
 
     async def _send_delayed_ping(self) -> None:

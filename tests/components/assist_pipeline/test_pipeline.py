@@ -1731,6 +1731,7 @@ async def test_chat_log_tts_streaming(
         device_id: str | None = None,
         satellite_id: str | None = None,
         extra_system_prompt: str | None = None,
+        identity_name: str | None = None,
     ):
         """Mock converse."""
         conversation_input = conversation.ConversationInput(
@@ -1742,6 +1743,7 @@ async def test_chat_log_tts_streaming(
             language=language,
             agent_id=agent_id,
             extra_system_prompt=extra_system_prompt,
+            identity_name=identity_name,
         )
 
         async def stream_llm_response():

@@ -88,6 +88,7 @@ async def async_converse(
     device_id: str | None = None,
     satellite_id: str | None = None,
     extra_system_prompt: str | None = None,
+    identity_name: str | None = None,
 ) -> ConversationResult:
     """Process text and get intent."""
     if agent_id is None:
@@ -117,6 +118,7 @@ async def async_converse(
         language=language,
         agent_id=agent_id,
         extra_system_prompt=extra_system_prompt,
+        identity_name=identity_name,
     )
     with async_conversation_trace() as trace:
         trace.add_event(

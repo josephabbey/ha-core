@@ -49,6 +49,9 @@ class ConversationInput:
     extra_system_prompt: str | None = None
     """Extra prompt to provide extra info to LLMs how to understand the command."""
 
+    identity_name: str | None = None
+    """Recognized identity for the current voice command."""
+
     def as_dict(self) -> dict[str, Any]:
         """Return input as a dict."""
         return {
@@ -60,6 +63,7 @@ class ConversationInput:
             "language": self.language,
             "agent_id": self.agent_id,
             "extra_system_prompt": self.extra_system_prompt,
+            "identity_name": self.identity_name,
         }
 
     def as_llm_context(self, conversing_domain: str) -> llm.LLMContext:

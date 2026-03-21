@@ -12,12 +12,15 @@ from wyoming.info import Info
 from wyoming.intent import Entity, Intent, NotRecognized
 
 from homeassistant.components import conversation
+from homeassistant.components.wyoming.identity import get_identity_store
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import MATCH_ALL
 from homeassistant.core import Context, HomeAssistant
 from homeassistant.helpers import intent
 
 from . import HANDLE_INFO, INTENT_INFO, MockAsyncTcpClient
+
+from tests.common import MockUser
 
 
 async def test_intent(hass: HomeAssistant, init_wyoming_intent: ConfigEntry) -> None:
@@ -26,6 +29,7 @@ async def test_intent(hass: HomeAssistant, init_wyoming_intent: ConfigEntry) -> 
     conversation_id = "conversation-1234"
     satellite_id = "satellite-1234"
     device_id = "device-1234"
+    identity_name = "alice"
 
     test_intent = Intent(
         name="TestIntent",
@@ -43,6 +47,7 @@ async def test_intent(hass: HomeAssistant, init_wyoming_intent: ConfigEntry) -> 
             assert intent_obj.slots.get("entity", {}).get("value") == "value"
             assert intent_obj.satellite_id == satellite_id
             assert intent_obj.device_id == device_id
+            assert intent_obj.identity_name == identity_name
             return intent_obj.create_response()
 
     intent.async_register(hass, TestIntentHandler())
@@ -61,6 +66,7 @@ async def test_intent(hass: HomeAssistant, init_wyoming_intent: ConfigEntry) -> 
             agent_id=agent_id,
             satellite_id=satellite_id,
             device_id=device_id,
+            identity_name=identity_name,
         )
 
     # Ensure language and context are sent
@@ -69,12 +75,60 @@ async def test_intent(hass: HomeAssistant, init_wyoming_intent: ConfigEntry) -> 
     assert client.transcript.context == {
         "conversation_id": conversation_id,
         "satellite_id": satellite_id,
+        "identity_name": identity_name,
     }
 
     assert result.response.response_type == intent.IntentResponseType.ACTION_DONE
     assert result.response.speech, "No speech"
     assert result.response.speech.get("plain", {}).get("speech") == "success"
     assert result.conversation_id == conversation_id
+
+
+async def test_intent_identity_mapping_impersonates_user(
+    hass: HomeAssistant,
+    init_wyoming_intent: ConfigEntry,
+    hass_admin_user: MockUser,
+) -> None:
+    """Test mapped Wyoming identities impersonate Home Assistant users."""
+    agent_id = "conversation.test_intent"
+
+    store = get_identity_store(hass)
+    store.async_set_mapping(init_wyoming_intent.entry_id, "Alice", hass_admin_user.id)
+
+    test_intent = Intent(
+        name="TestIntent",
+        entities=[Entity(name="entity", value="value")],
+        text="success",
+    )
+
+    class TestIntentHandler(intent.IntentHandler):
+        """Test Intent Handler."""
+
+        intent_type = "TestIntent"
+
+        async def async_handle(self, intent_obj: intent.Intent):
+            """Handle the intent."""
+            assert intent_obj.context.user_id == hass_admin_user.id
+            assert intent_obj.identity_name == "Alice"
+            return intent_obj.create_response()
+
+    intent.async_register(hass, TestIntentHandler())
+
+    with patch(
+        "homeassistant.components.wyoming.conversation.AsyncTcpClient",
+        MockAsyncTcpClient([test_intent.event()]),
+    ):
+        result = await conversation.async_converse(
+            hass=hass,
+            text="test text",
+            conversation_id=None,
+            context=Context(user_id="original-user"),
+            language=hass.config.language,
+            agent_id=agent_id,
+            identity_name="Alice",
+        )
+
+    assert result.response.response_type == intent.IntentResponseType.ACTION_DONE
 
 
 async def test_intent_handle_error(

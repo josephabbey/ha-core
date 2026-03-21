@@ -440,6 +440,8 @@ class AssistSatelliteEntity(entity.Entity):
         start_stage: PipelineStage = PipelineStage.STT,
         end_stage: PipelineStage = PipelineStage.TTS,
         wake_word_phrase: str | None = None,
+        identity_name: str | None = None,
+        context_override: Context | None = None,
     ) -> None:
         """Triggers an Assist pipeline in Home Assistant from a satellite."""
         await self._cancel_running_pipeline()
@@ -483,15 +485,22 @@ class AssistSatelliteEntity(entity.Entity):
 
         device_id = self.registry_entry.device_id if self.registry_entry else None
 
-        # Refresh context if necessary
-        if (
-            (self._context is None)
-            or (self._context_set is None)
-            or ((time.time() - self._context_set) > entity.CONTEXT_RECENT_TIME_SECONDS)
-        ):
-            self.async_set_context(Context())
+        if context_override is None:
+            # Refresh context if necessary
+            if (
+                (self._context is None)
+                or (self._context_set is None)
+                or (
+                    (time.time() - self._context_set)
+                    > entity.CONTEXT_RECENT_TIME_SECONDS
+                )
+            ):
+                self.async_set_context(Context())
 
-        assert self._context is not None
+            assert self._context is not None
+            context = self._context
+        else:
+            context = context_override
 
         # Set entity state based on pipeline events
         self._run_has_tts = False
@@ -508,7 +517,7 @@ class AssistSatelliteEntity(entity.Entity):
                     self.hass,
                     async_pipeline_from_audio_stream(
                         self.hass,
-                        context=self._context,
+                        context=context,
                         event_callback=self._internal_on_pipeline_event,
                         stt_metadata=stt.SpeechMetadata(
                             language="",  # set in async_pipeline_from_audio_stream
@@ -523,6 +532,7 @@ class AssistSatelliteEntity(entity.Entity):
                         conversation_id=session.conversation_id,
                         device_id=device_id,
                         satellite_id=self.entity_id,
+                        identity_name=identity_name,
                         tts_audio_output=self.tts_options,
                         wake_word_phrase=wake_word_phrase,
                         audio_settings=AudioSettings(

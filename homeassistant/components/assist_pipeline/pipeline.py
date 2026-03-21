@@ -603,6 +603,9 @@ class PipelineRun:
     _satellite_id: str | None = None
     """Optional satellite id set during run start."""
 
+    _identity_name: str | None = None
+    """Optional recognized identity set during run start."""
+
     _conversation_data: PipelineConversationData | None = None
     """Data tied to the conversation ID."""
 
@@ -657,11 +660,16 @@ class PipelineRun:
         pipeline_data.pipeline_debug[self.pipeline.id][self.id].events.append(event)
 
     def start(
-        self, conversation_id: str, device_id: str | None, satellite_id: str | None
+        self,
+        conversation_id: str,
+        device_id: str | None,
+        satellite_id: str | None,
+        identity_name: str | None,
     ) -> None:
         """Emit run start event."""
         self._device_id = device_id
         self._satellite_id = satellite_id
+        self._identity_name = identity_name
         self._start_debug_recording_thread()
 
         data: dict[str, Any] = {
@@ -1117,6 +1125,7 @@ class PipelineRun:
                     "conversation_id": conversation_id,
                     "device_id": self._device_id,
                     "satellite_id": self._satellite_id,
+                    "identity_name": self._identity_name,
                     "prefer_local_intents": self.pipeline.prefer_local_intents,
                 },
             )
@@ -1217,6 +1226,7 @@ class PipelineRun:
                 language=input_language,
                 agent_id=self.intent_agent.id,
                 extra_system_prompt=conversation_extra_system_prompt,
+                identity_name=self._identity_name,
             )
 
             with (
@@ -1305,6 +1315,7 @@ class PipelineRun:
                         language=user_input.language,
                         agent_id=user_input.agent_id,
                         extra_system_prompt=user_input.extra_system_prompt,
+                        identity_name=user_input.identity_name,
                     )
                     speech = conversation_result.response.speech.get("plain", {}).get(
                         "speech", ""
@@ -1681,12 +1692,16 @@ class PipelineInput:
     satellite_id: str | None = None
     """Identifier of the satellite that is processing the input/output of the pipeline."""
 
+    identity_name: str | None = None
+    """Recognized identity for the current voice command."""
+
     async def execute(self) -> None:
         """Run pipeline."""
         self.run.start(
             conversation_id=self.session.conversation_id,
             device_id=self.device_id,
             satellite_id=self.satellite_id,
+            identity_name=self.identity_name,
         )
         current_stage: PipelineStage | None = self.run.start_stage
         stt_audio_buffer: list[EnhancedAudioChunk] = []

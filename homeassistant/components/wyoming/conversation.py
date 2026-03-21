@@ -20,6 +20,7 @@ from homeassistant.util import ulid as ulid_util
 from .const import DOMAIN
 from .data import WyomingService
 from .error import WyomingError
+from .identity import async_get_effective_context
 from .models import DomainDataItem
 
 _LOGGER = logging.getLogger(__name__)
@@ -55,6 +56,7 @@ class WyomingConversationEntity(
         super().__init__()
 
         self.service = service
+        self._entry_id = config_entry.entry_id
 
         self._intent_service: IntentProgram | None = None
         self._handle_service: HandleProgram | None = None
@@ -104,10 +106,18 @@ class WyomingConversationEntity(
         """Process a sentence."""
         conversation_id = user_input.conversation_id or ulid_util.ulid_now()
         intent_response = intent.IntentResponse(language=user_input.language)
+        effective_context = await async_get_effective_context(
+            self.hass,
+            self._entry_id,
+            user_input.context,
+            user_input.identity_name,
+        )
 
         context = {"conversation_id": conversation_id}
         if user_input.satellite_id:
             context["satellite_id"] = user_input.satellite_id
+        if user_input.identity_name:
+            context["identity_name"] = user_input.identity_name
 
         try:
             async with AsyncTcpClient(self.service.host, self.service.port) as client:
@@ -148,9 +158,11 @@ class WyomingConversationEntity(
                             intent_type,
                             intent_slots,
                             text_input=user_input.text,
+                            context=effective_context,
                             language=user_input.language,
                             satellite_id=user_input.satellite_id,
                             device_id=user_input.device_id,
+                            identity_name=user_input.identity_name,
                         )
 
                         if (not intent_response.speech) and recognized_intent.text:

@@ -25,6 +25,7 @@ from wyoming.vad import VoiceStarted, VoiceStopped
 from wyoming.wake import Detect, Detection
 
 from homeassistant.components import assist_pipeline, assist_satellite, wyoming
+from homeassistant.components.wyoming.identity import get_identity_store
 from homeassistant.components.wyoming.assist_satellite import WyomingAssistSatellite
 from homeassistant.components.wyoming.devices import SatelliteDevice
 from homeassistant.const import STATE_ON
@@ -35,6 +36,7 @@ from homeassistant.setup import async_setup_component
 from . import SATELLITE_INFO, WAKE_WORD_INFO, MockAsyncTcpClient
 
 from tests.common import MockConfigEntry
+from tests.common import MockUser
 from tests.components.tts.common import MockResultStream
 
 
@@ -348,7 +350,6 @@ async def test_satellite_pipeline(hass: HomeAssistant) -> None:
 
         # "Assist in progress" sensor should be active now
         assert device.is_active
-
         # Push in some audio
         mock_client.inject_event(
             AudioChunk(rate=16000, width=2, channels=1, audio=bytes(1024)).event()
@@ -442,6 +443,73 @@ async def test_satellite_pipeline(hass: HomeAssistant) -> None:
         # Stop the satellite
         await hass.config_entries.async_unload(entry.entry_id)
         await hass.async_block_till_done()
+
+
+async def test_satellite_pipeline_identity_mapping_impersonates_user(
+    hass: HomeAssistant,
+    hass_admin_user: MockUser,
+) -> None:
+    """Test Wyoming satellite identities map to Home Assistant users."""
+    assert await async_setup_component(hass, assist_pipeline.DOMAIN, {})
+
+    event = Event(
+        type="run-pipeline",
+        data={
+            "start_stage": PipelineStage.WAKE.value,
+            "end_stage": PipelineStage.TTS.value,
+            "restart_on_end": False,
+            "identity_name": "Alice",
+        },
+    )
+
+    pipeline_context = None
+    pipeline_kwargs: dict[str, Any] = {}
+    run_pipeline_called = asyncio.Event()
+
+    async def async_pipeline_from_audio_stream(
+        hass: HomeAssistant,
+        context,
+        event_callback,
+        stt_metadata,
+        stt_stream,
+        **kwargs,
+    ) -> None:
+        nonlocal pipeline_context, pipeline_kwargs
+        pipeline_context = context
+        pipeline_kwargs = kwargs
+        run_pipeline_called.set()
+
+        async for _chunk in stt_stream:
+            break
+
+    with (
+        patch(
+            "homeassistant.components.wyoming.data.load_wyoming_info",
+            return_value=SATELLITE_INFO,
+        ),
+        patch(
+            "homeassistant.components.wyoming.assist_satellite.AsyncTcpClient",
+            SatelliteAsyncTcpClient([], block_until_inject=True),
+        ) as mock_client,
+        patch(
+            "homeassistant.components.assist_satellite.entity.async_pipeline_from_audio_stream",
+            async_pipeline_from_audio_stream,
+        ),
+        patch("homeassistant.components.wyoming.assist_satellite._PING_SEND_DELAY", 0),
+    ):
+        entry = await setup_config_entry(hass)
+        store = get_identity_store(hass)
+        store.async_set_mapping(entry.entry_id, "Alice", hass_admin_user.id)
+        mock_client.inject_event(event)
+
+        async with asyncio.timeout(1):
+            await mock_client.connect_event.wait()
+            await mock_client.run_satellite_event.wait()
+            await run_pipeline_called.wait()
+
+    assert pipeline_context is not None
+    assert pipeline_context.user_id == hass_admin_user.id
+    assert pipeline_kwargs["identity_name"] == "Alice"
 
 
 async def test_satellite_muted(hass: HomeAssistant) -> None:
@@ -944,7 +1012,7 @@ async def test_invalid_stages(hass: HomeAssistant) -> None:
     start_stage_event = asyncio.Event()
     end_stage_event = asyncio.Event()
 
-    def _run_pipeline_once(self, run_pipeline, wake_word_phrase):
+    def _run_pipeline_once(self, run_pipeline, wake_word_phrase, identity_name=None):
         # Set bad start stage
         run_pipeline.start_stage = PipelineStage.INTENT
         run_pipeline.end_stage = PipelineStage.TTS

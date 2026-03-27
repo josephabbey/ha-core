@@ -118,6 +118,7 @@ def websocket_delete_area(
         vol.Optional("name"): str,
         vol.Optional("picture"): vol.Any(str, None),
         vol.Optional("temperature_entity_id"): vol.Any(str, None),
+        vol.Optional("shape"): vol.Any(list[tuple[float, float]], None),
     }
 )
 @websocket_api.require_admin

@@ -419,6 +419,10 @@ ATTR_HIDDEN: Final = "hidden"
 # Location of the entity
 ATTR_LATITUDE: Final = "latitude"
 ATTR_LONGITUDE: Final = "longitude"
+ATTR_LEVEL: Final = "level"
+ATTR_AREA: Final = "area"
+ATTR_X: Final = "x"
+ATTR_Y: Final = "y"
 
 # Elevation of the entity
 ATTR_ELEVATION: Final = "elevation"

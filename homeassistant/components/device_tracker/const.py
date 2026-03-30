@@ -25,6 +25,7 @@ class SourceType(StrEnum):
     ROUTER = "router"
     BLUETOOTH = "bluetooth"
     BLUETOOTH_LE = "bluetooth_le"
+    MOTION = "motion"
 
 
 CONF_SCAN_INTERVAL: Final = "interval_seconds"
@@ -48,6 +49,7 @@ ATTR_MAC: Final = "mac"
 ATTR_SOURCE_TYPE: Final = "source_type"
 ATTR_CONSIDER_HOME: Final = "consider_home"
 ATTR_IP: Final = "ip"
+ATTR_COORDINATES: Final = "coordinates"
 
 CONNECTED_DEVICE_REGISTERED = SignalType[dict[str, str | None]](
     "device_tracker_connected_device_registered"

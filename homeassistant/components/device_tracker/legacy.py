@@ -22,12 +22,16 @@ from homeassistant.config import (
     load_yaml_config_file,
 )
 from homeassistant.const import (
+    ATTR_AREA,
     ATTR_ENTITY_ID,
     ATTR_GPS_ACCURACY,
     ATTR_ICON,
     ATTR_LATITUDE,
+    ATTR_LEVEL,
     ATTR_LONGITUDE,
     ATTR_NAME,
+    ATTR_X,
+    ATTR_Y,
     CONF_ICON,
     CONF_MAC,
     CONF_NAME,
@@ -63,6 +67,7 @@ from .const import (
     ATTR_ATTRIBUTES,
     ATTR_BATTERY,
     ATTR_CONSIDER_HOME,
+    ATTR_COORDINATES,
     ATTR_DEV_ID,
     ATTR_GPS,
     ATTR_HOST_NAME,
@@ -114,6 +119,9 @@ SERVICE_SEE_PAYLOAD_SCHEMA: Final[vol.Schema] = vol.Schema(
             ATTR_LOCATION_NAME: cv.string,
             ATTR_GPS: cv.gps,
             ATTR_GPS_ACCURACY: cv.positive_int,
+            ATTR_COORDINATES: cv.coordinates,
+            ATTR_LEVEL: cv.positive_int,
+            ATTR_AREA: cv.string,
             ATTR_BATTERY: cv.positive_int,
             ATTR_ATTRIBUTES: dict,
             ATTR_SOURCE_TYPE: vol.Coerce(SourceType),
@@ -140,6 +148,9 @@ class SeeCallback(Protocol):
         location_name: str | None = None,
         gps: GPSType | None = None,
         gps_accuracy: int | None = None,
+        coordinates: GPSType | None = None,
+        level: int | None = None,
+        area: str | None = None,
         battery: int | None = None,
         attributes: dict[str, Any] | None = None,
         source_type: SourceType | str = SourceType.GPS,
@@ -161,6 +172,9 @@ class AsyncSeeCallback(Protocol):
         location_name: str | None = None,
         gps: GPSType | None = None,
         gps_accuracy: int | None = None,
+        coordinates: GPSType | None = None,
+        level: int | None = None,
+        area: str | None = None,
         battery: int | None = None,
         attributes: dict[str, Any] | None = None,
         source_type: SourceType | str = SourceType.GPS,
@@ -179,6 +193,9 @@ def see(
     location_name: str | None = None,
     gps: GPSType | None = None,
     gps_accuracy: int | None = None,
+    coordinates: GPSType | None = None,
+    level: int | None = None,
+    area: str | None = None,
     battery: int | None = None,
     attributes: dict[str, Any] | None = None,
 ) -> None:
@@ -192,6 +209,9 @@ def see(
             (ATTR_LOCATION_NAME, location_name),
             (ATTR_GPS, gps),
             (ATTR_GPS_ACCURACY, gps_accuracy),
+            (ATTR_COORDINATES, coordinates),
+            (ATTR_LEVEL, level),
+            (ATTR_AREA, area),
             (ATTR_BATTERY, battery),
         )
         if value is not None
@@ -597,6 +617,9 @@ class DeviceTracker:
         location_name: str | None = None,
         gps: GPSType | None = None,
         gps_accuracy: int | None = None,
+        coordinates: GPSType | None = None,
+        level: int | None = None,
+        area: str | None = None,
         battery: int | None = None,
         attributes: dict[str, Any] | None = None,
         source_type: SourceType | str = SourceType.GPS,
@@ -613,6 +636,9 @@ class DeviceTracker:
                 location_name,
                 gps,
                 gps_accuracy,
+                coordinates,
+                level,
+                area,
                 battery,
                 attributes,
                 source_type,
@@ -630,6 +656,9 @@ class DeviceTracker:
         location_name: str | None = None,
         gps: GPSType | None = None,
         gps_accuracy: int | None = None,
+        coordinates: GPSType | None = None,
+        level: int | None = None,
+        area: str | None = None,
         battery: int | None = None,
         attributes: dict[str, Any] | None = None,
         source_type: SourceType | str = SourceType.GPS,
@@ -658,6 +687,9 @@ class DeviceTracker:
                 location_name,
                 gps,
                 gps_accuracy,
+                coordinates,
+                level,
+                area,
                 battery,
                 attributes,
                 source_type,
@@ -698,6 +730,9 @@ class DeviceTracker:
             location_name,
             gps,
             gps_accuracy,
+            coordinates,
+            level,
+            area,
             battery,
             attributes,
             source_type,
@@ -774,6 +809,9 @@ class Device(RestoreEntity):
     location_name: str | None = None
     gps: GPSType | None = None
     gps_accuracy: int = 0
+    coordinates: GPSType | None = None
+    level: int | None = None
+    area: str | None = None
     last_seen: datetime | None = None
     battery: int | None = None
     attributes: dict | None = None
@@ -851,6 +889,12 @@ class Device(RestoreEntity):
             attributes[ATTR_LONGITUDE] = self.gps[1]
             attributes[ATTR_GPS_ACCURACY] = self.gps_accuracy
 
+        if self.coordinates is not None:
+            attributes[ATTR_X] = self.coordinates[0]
+            attributes[ATTR_Y] = self.coordinates[1]
+            attributes[ATTR_LEVEL] = self.level
+            attributes[ATTR_AREA] = self.area
+
         if self.battery is not None:
             attributes[ATTR_BATTERY] = self.battery
 
@@ -872,6 +916,9 @@ class Device(RestoreEntity):
         location_name: str | None = None,
         gps: GPSType | None = None,
         gps_accuracy: int | None = None,
+        coordinates: GPSType | None = None,
+        level: int | None = None,
+        area: str | None = None,
         battery: int | None = None,
         attributes: dict[str, Any] | None = None,
         source_type: SourceType | str = SourceType.GPS,
@@ -899,6 +946,13 @@ class Device(RestoreEntity):
                 self.gps = None
                 self.gps_accuracy = 0
                 LOGGER.warning("Could not parse gps value for %s: %s", self.dev_id, gps)
+
+        self.coordinates = None
+        self.level = level
+        self.area = area
+
+        if coordinates is not None:
+            self.coordinates = float(coordinates[0]), float(coordinates[1])
 
         await self.async_update()
 
@@ -965,6 +1019,16 @@ class Device(RestoreEntity):
                 state.attributes[ATTR_LATITUDE],
                 state.attributes[ATTR_LONGITUDE],
             )
+
+        if ATTR_X in state.attributes:
+            self.coordinates = (
+                state.attributes[ATTR_X],
+                state.attributes[ATTR_Y],
+            )
+        if ATTR_LEVEL in state.attributes:
+            self.level = state.attributes[ATTR_LEVEL]
+        if ATTR_AREA in state.attributes:
+            self.area = state.attributes[ATTR_AREA]
 
 
 class DeviceScanner:

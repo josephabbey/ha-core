@@ -1,5 +1,8 @@
 """Code to set up a device tracker platform using a config entry."""
 
+# Should entities that provide x,y be separate from entities that provide lat,lon?
+# They should be the same if we assume that for example people might eventually have both available on their phones.
+
 from __future__ import annotations
 
 import asyncio
@@ -10,10 +13,14 @@ from propcache.api import cached_property
 from homeassistant.components import zone
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
+    ATTR_AREA,
     ATTR_BATTERY_LEVEL,
     ATTR_GPS_ACCURACY,
     ATTR_LATITUDE,
+    ATTR_LEVEL,
     ATTR_LONGITUDE,
+    ATTR_X,
+    ATTR_Y,
     STATE_HOME,
     STATE_NOT_HOME,
     EntityCategory,
@@ -208,6 +215,10 @@ CACHED_TRACKER_PROPERTIES_WITH_ATTR_ = {
     "location_accuracy",
     "location_name",
     "longitude",
+    "level",
+    "area",
+    "x",
+    "y",
 }
 
 
@@ -221,6 +232,10 @@ class TrackerEntity(
     _attr_location_accuracy: float = 0
     _attr_location_name: str | None = None
     _attr_longitude: float | None = None
+    _attr_level: int | None = None
+    _attr_area: str | None = None
+    _attr_x: float | None = None
+    _attr_y: float | None = None
     _attr_source_type: SourceType = SourceType.GPS
 
     @cached_property
@@ -256,6 +271,26 @@ class TrackerEntity(
         """Return longitude value of the device."""
         return self._attr_longitude
 
+    @cached_property
+    def level(self) -> int | None:
+        """Return level value of the device."""
+        return self._attr_level
+
+    @cached_property
+    def area(self) -> str | None:
+        """Return area value of the device."""
+        return self._attr_area
+
+    @cached_property
+    def x(self) -> float | None:
+        """Return x value of the device."""
+        return self._attr_x
+
+    @cached_property
+    def y(self) -> float | None:
+        """Return y value of the device."""
+        return self._attr_y
+
     @property
     def state(self) -> str | None:
         """Return the state of the device."""
@@ -287,6 +322,12 @@ class TrackerEntity(
             attr[ATTR_LATITUDE] = self.latitude
             attr[ATTR_LONGITUDE] = self.longitude
             attr[ATTR_GPS_ACCURACY] = self.location_accuracy
+
+        if self.level is not None and self.x is not None and self.y is not None:
+            attr[ATTR_LEVEL] = self.level
+            attr[ATTR_AREA] = self.area
+            attr[ATTR_X] = self.x
+            attr[ATTR_Y] = self.y
 
         return attr
 

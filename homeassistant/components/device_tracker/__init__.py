@@ -18,6 +18,7 @@ from .config_entry import (  # noqa: F401
 from .const import (  # noqa: F401
     ATTR_ATTRIBUTES,
     ATTR_BATTERY,
+    ATTR_COORDINATES,
     ATTR_DEV_ID,
     ATTR_GPS,
     ATTR_HOST_NAME,

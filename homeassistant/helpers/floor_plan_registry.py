@@ -25,6 +25,13 @@
 #   - Integration Overlay: Path (history and plan), No go zones, cleaning zones, map according to the vacuum.
 #   - Interaction Overlay: Draw path/area to clean
 
+# device_tracker and vacuum will get new features with SUPPORTS_
+# new selectors will be added for selecting a path, bounding box, zone (from the map gui)
+
+# when setting up integrations/reconfiguring, that can use this, a gui will be provided that shows the floor plan
+# and the world according to the integration, the user can resize/flip/rotate/stretch/move the world to align the
+# two and the corresponding matrix will be saved.
+
 from __future__ import annotations
 
 from collections.abc import Iterable
